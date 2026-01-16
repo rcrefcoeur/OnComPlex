@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>OnComPlex</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <style>
+        #quick-buttons button {
+            margin: 5px 5px 5px 0;
+            padding: 5px 10px;
+            cursor: pointer;
+        }
+        #external-links a {
+            margin-right: 10px;
+        }
+        input[type="text"] {
+            width: 300px;
+            padding: 5px;
+        }
+        .autocomplete-suggestions {
+            border: 1px solid #ccc;
+            max-height: 150px;
+            overflow-y: auto;
+            position: absolute;
+            background: #fff;
+            z-index: 1000;
+            width: 300px;
+        }
+        .autocomplete-suggestion {
+            padding: 5px;
+            cursor: pointer;
+        }
+        .autocomplete-suggestion:hover {
+            background-color: #f0f0f0;
+        }
+    </style>
+</head>
+<body>
+
+<h1>OnComPlex</h1>
+<p>Search human proteins, variants, and interaction data</p>
+
+<!-- External links -->
+<div id="external-links">
+    <a href="https://cancer.sanger.ac.uk/cosmic/login" target="_blank">COSMIC</a>
+    <a href="https://thebiogrid.org/" target="_blank">BioGRID</a>
+    <a href="https://www.uniprot.org/" target="_blank">UniProt</a>
+</div>
+
+<!-- Search form -->
+<form method="POST" action="/results" autocomplete="off" id="search-form">
+    <input
+        type="text"
+        name="query"
+        id="search-input"
+        placeholder="Gene (TP53), UniProt (P04637), Protein name..."
+        required
+    >
+    <button type="submit">Search</button>
+    <div id="autocomplete-list" class="autocomplete-suggestions"></div>
+</form>
+
+<!-- Quick search buttons -->
+<div id="quick-buttons">
+    <button type="button" onclick="fillSearch('TP53')">TP53</button>
+    <button type="button" onclick="fillSearch('BRCA1')">BRCA1</button>
+</div>
+
+<script>
+    // Fill search input
+    function fillSearch(protein) {
+        const input = document.getElementById('search-input');
+        input.value = protein;
+    }
+
+    // Dynamic autocomplete using /autocomplete
+    const input = document.getElementById('search-input');
+    const autocompleteList = document.getElementById('autocomplete-list');
+
+    input.addEventListener('input', function() {
+        const val = this.value.trim();
+        autocompleteList.innerHTML = '';
+        if (!val) return;
+
+        fetch(`/autocomplete?q=${encodeURIComponent(val)}`)
+            .then(resp => resp.json())
+            .then(suggestions => {
+                suggestions.forEach(p => {
+                    const div = document.createElement('div');
+                    div.className = 'autocomplete-suggestion';
+                    div.textContent = p;
+                    div.addEventListener('click', function() {
+                        input.value = p;
+                        autocompleteList.innerHTML = '';
+                    });
+                    autocompleteList.appendChild(div);
+                });
+            });
+    });
+
+    document.addEventListener('click', function(e) {
+        if (e.target !== input) {
+            autocompleteList.innerHTML = '';
+        }
+    });
+</script>
+
+</body>
+</html>

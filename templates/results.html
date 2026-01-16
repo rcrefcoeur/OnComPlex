@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>OnComPlex Results</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+<style>
+body { font-family: Arial; font-size: 14px; line-height: 1.5; margin: 20px; }
+table { width: 100%; border-collapse: collapse; }
+th, td { border: 1px solid #ddd; padding: 8px; vertical-align: top; }
+th { background-color: #f4f4f4; font-weight: bold; position: sticky; top: 0; z-index: 5; font-size: 16px; }
+td.uniprot-cell { position: sticky; left: 0; background: #fafafa; font-weight: bold; min-width: 180px; z-index: 4; }
+.variants-container { max-height: 200px; overflow-y: auto; transition: max-height 0.3s ease; }
+.variants-container.expanded { max-height: 400px; }
+.toggle-btn { cursor: pointer; color: #007bff; font-size: 0.95em; margin-top: 4px; display: inline-block; }
+.variant-row { margin-bottom: 4px; font-size: 14px; }
+.variant-type { font-weight: bold; }
+.variant-bar-container { position: relative; width: 100%; min-height: 240px; margin-top: 10px; border: 1px solid #ccc; border-radius: 8px; background: #f9f9f9; }
+.variant-bar { position: absolute; bottom: 0; width: 100%; height: 16px; background: #eee; border-radius: 8px; z-index: 1; }
+.aa-axis { display: flex; justify-content: space-between; font-size: 12px; position: absolute; bottom: -20px; width: 100%; }
+.variant-lollipop { position: absolute; width: 10px; height: 10px; border-radius: 50%; transform: translateX(-50%); z-index: 2; }
+.variant-stalk { position: absolute; width: 2px; background: black; bottom: 20px; z-index: 1; }
+.diamond-head { width: 10px; height: 10px; background: red; position: absolute; transform: translate(-50%, -50%) rotate(45deg); cursor: pointer; z-index: 2; }
+.popup { display: none; position: absolute; background: #fff; border: 1px solid #ccc; padding: 8px; font-size: 12px; box-shadow: 0 0 5px rgba(0,0,0,0.3); z-index: 100; }
+.overlap-region { position: absolute; bottom: 0; height: 16px; background-color: rgba(255,0,0,0.3); cursor: pointer; z-index: 5; }
+.protein-separator { height: 20px; }
+.zoomed-bar-container { position: relative; width: 50%; min-height: 240px; border: 1px solid #ccc; background: #f9f9f9; margin: 10px auto; }
+.zoomed-bar { position: absolute; bottom: 0; height: 16px; background: #eee; width: 100%; border-radius: 8px; z-index: 1; }
+.interactions-container { max-height: 200px; overflow-y: auto; transition: max-height 0.3s ease; }
+.interaction-row { margin-bottom: 4px; font-size: 14px; }
+</style>
+<script>
+function toggleVariants(id) {
+    const el = document.getElementById(id);
+    el.classList.toggle("expanded");
+}
+function showDiamondPopup(diamondId) {
+    const popup = document.getElementById(diamondId + '-popup');
+    popup.style.display = 'block';
+    document.addEventListener('click', function closePopup(e) {
+        if (!popup.contains(e.target) && e.target.id !== diamondId) {
+            popup.style.display = 'none';
+            document.removeEventListener('click', closePopup);
+        }
+    });
+}
+function showLollipopPopup(lollipopId) {
+    const popup = document.getElementById(lollipopId + '-popup');
+    popup.style.display = 'block';
+    document.addEventListener('click', function closePopup(e) {
+        if (!popup.contains(e.target) && e.target.id !== lollipopId) {
+            popup.style.display = 'none';
+            document.removeEventListener('click', closePopup);
+        }
+    });
+}
+function showZoomedRegion(containerId, start, end, idx) {
+    const popupId = 'zoomed-popup-' + idx;
+    const existing = document.getElementById(popupId);
+    if (existing) { existing.remove(); }
+    const parent = document.getElementById(containerId);
+    const popup = document.createElement('div');
+    popup.id = popupId;
+    popup.className = 'popup';
+    popup.style.width = '400px';
+    popup.style.height = '240px';
+    popup.style.left = '50px';
+    popup.style.top = '50px';
+    let html = '<div class="zoomed-bar-container">';
+    html += '<div class="zoomed-bar">';
+    {% raw %}
+    const regionVariants = [];
+    {% endraw %}
+    html += '</div>';
+    html += '</div>';
+    popup.innerHTML = html;
+    document.body.appendChild(popup);
+    document.addEventListener('click', function closeZoom(e){
+        if (!popup.contains(e.target)) {
+            popup.remove();
+            document.removeEventListener('click', closeZoom);
+        }
+    });
+}
+</script>
+</head>
+<body>
+<h2>Search results for "{{ query }}"</h2>
+
+<table>
+<thead>
+<tr>
+<th>UniProt / Gene / Length</th>
+<th>Variants</th>
+<th>Interactions</th>
+</tr>
+</thead>
+<tbody>
+{% for protein in results %}
+<tr>
+<td class="uniprot-cell">
+    <div>
+        <strong>UniProt:</strong>
+        <a href="https://www.uniprot.org/uniprotkb/{{ protein.uniprot }}/entry"
+           target="_blank"
+           rel="noopener noreferrer">
+            {{ protein.uniprot }}
+        </a>
+    </div>
+    {% if protein.gene_names %}<div>Gene: {{ protein.gene_names }}</div>{% endif %}
+    <div>Length: {{ protein.length }}</div>
+</td>
+<td>
+    <div id="variants-{{ loop.index }}" class="variants-container">
+        {% for v in protein.variants %}
+            <div class="variant-row">
+                <strong>{{ v.mutation }}</strong> — Position: {{ v.pos }} —
+                <span class="variant-type" style="color: {{ v.color }};">{{ v.type_aa }}</span>
+            </div>
+        {% endfor %}
+    </div>
+    {% if protein.variants|length > 20 %}
+        <div class="toggle-btn" onclick="toggleVariants('variants-{{ loop.index }}')">
+            Show / hide variants ({{ protein.variants|length }})
+        </div>
+    {% endif %}
+</td>
+<td>
+    <div class="interactions-container">
+        {% if protein.interactions %}
+            {% for inter in protein.interactions %}
+                <div class="interaction-row">
+                    Partner:
+                    <a href="{{ url_for('results') }}?query={{ inter.partner }}" target="_blank">
+                        {{ inter.partner }}
+                    </a>
+                    — System: {{ inter.experimental_system }}
+                    {% if inter.pubmed_id %}
+                        — PubMed:
+                        <a href="https://pubmed.ncbi.nlm.nih.gov/{{ inter.pubmed_id }}" target="_blank" rel="noopener noreferrer">
+                            {{ inter.pubmed_id }}
+                        </a>
+                    {% endif %}
+                </div>
+            {% endfor %}
+        {% else %}
+            <div class="interaction-row">No interactions found</div>
+        {% endif %}
+    </div>
+</td>
+</tr>
+
+<tr>
+<td colspan="3">
+    <div class="variant-bar-container" id="bar-{{ loop.index }}">
+        <div class="variant-bar"></div>
+        {% set ns = namespace(residue_counts={}) %}
+        {% set last_positions_pct = [] %}
+        {% set overlap_threshold = 0.6 %}
+        {% for v in protein.variants %}
+            {% if v.type_aa != 'silent' %}
+                {% set left_pct = (v.pos / protein.length * 100) %}
+                {% if ns.residue_counts[v.pos] is not defined %}
+                    {% set _ = ns.residue_counts.update({v.pos: 0}) %}
+                {% endif %}
+                {% set _ = ns.residue_counts.update({v.pos: ns.residue_counts[v.pos] + 1}) %}
+                {% set level = ns.residue_counts[v.pos] %}
+                {% set stalk_height = level * 18 %}
+
+                {% if level <= 10 %}
+                    <div class="variant-stalk" style="left: {{ left_pct }}%; height: {{ stalk_height }}px;"></div>
+                    <div class="variant-lollipop" id="lollipop-{{ loop.index }}-{{ v.pos }}"
+                         title="{{ v.mutation }} ({{ v.type_aa }})"
+                         style="left: {{ left_pct }}%; bottom: {{ 20 + stalk_height }}px; background-color: {{ v.color }};"
+                         onclick="showLollipopPopup('lollipop-{{ loop.index }}-{{ v.pos }}')">
+                    </div>
+                    <div class="popup" id="lollipop-{{ loop.index }}-{{ v.pos }}-popup">
+                        {{ v.mutation }} — <span style="color: {{ v.color }};">{{ v.type_aa }}</span>
+                    </div>
+                {% else %}
+                    {% set diamond_id = 'diamond-' ~ loop.index ~ '-' ~ v.pos %}
+                    <div class="diamond-head" id="{{ diamond_id }}"
+                         onclick="showDiamondPopup('{{ diamond_id }}')"
+                         style="left: {{ left_pct }}%; bottom: {{ 20 + 10*18 + 4 }}px;"></div>
+                    <div class="popup" id="{{ diamond_id }}-popup">
+                        {% for extra_v in protein.variants %}
+                            {% if extra_v.pos == v.pos %}
+                                <div>{{ extra_v.mutation }} — <span style="color: {{ extra_v.color }};">{{ extra_v.type_aa }}</span></div>
+                            {% endif %}
+                        {% endfor %}
+                    </div>
+                {% endif %}
+
+                {% for lp in last_positions_pct %}
+                    {% if (left_pct - lp) < overlap_threshold %}
+                        {% set center_pct = (left_pct + lp) / 2 %}
+                        {% set overlap_left = center_pct - (overlap_threshold / 2) %}
+                        <div class="overlap-region"
+                             style="left: {{ overlap_left }}%; width: {{ overlap_threshold }}%;"
+                             onclick="showZoomedRegion('bar-{{ loop.index }}', {{ v.pos - 3 }}, {{ v.pos + 3 }}, {{ loop.index }})">
+                        </div>
+                    {% endif %}
+                {% endfor %}
+                {% set _ = last_positions_pct.append(left_pct) %}
+            {% endif %}
+        {% endfor %}
+        <div class="aa-axis">
+            <span>1</span>
+            {% for i in range(1,5) %}
+                <span>{{ (protein.length*i/4)|round(0,'ceil')|int }}</span>
+            {% endfor %}
+            <span>{{ protein.length }}</span>
+        </div>
+    </div>
+</td>
+</tr>
+
+<tr class="protein-separator"><td colspan="3"></td></tr>
+{% endfor %}
+</tbody>
+</table>
+</body>
+</html>

@@ -1,0 +1,15 @@
+# Local config with real credentials — copy from db_config.example.py
+db_config.py
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
